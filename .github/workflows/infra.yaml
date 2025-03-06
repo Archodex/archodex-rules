@@ -1,0 +1,33 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_PAGER: ''
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-west-2
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ArchodexRulesGithubActionsRole
+          mask-aws-account-id: true
+
+      - uses: actions/checkout@v4
+
+      - name: Deploy Infrastructure
+        run: |
+          aws cloudformation deploy \
+            --stack-name archodex-rules \
+            --template-file template.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --disable-rollback
