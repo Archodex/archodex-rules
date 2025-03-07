@@ -270,6 +270,18 @@ Resources:
             ResponseHeadersPolicyId: !Ref ResponseHeaderPolicy
             TargetOriginId: AssetsBucket
             ViewerProtocolPolicy: redirect-to-https
+          - AllowedMethods:
+              - HEAD
+              - GET
+            CachedMethods:
+              - HEAD
+              - GET
+            CachePolicyId: !Ref CloudFrontCachePolicyDisabledWithCompression
+            Compress: true
+            PathPattern: /dev/*
+            ResponseHeadersPolicyId: !Ref ResponseHeaderPolicy
+            TargetOriginId: AssetsBucket
+            ViewerProtocolPolicy: redirect-to-https
         DefaultCacheBehavior:
           AllowedMethods:
             - HEAD
