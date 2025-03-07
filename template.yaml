@@ -66,7 +66,6 @@ Resources:
                 Condition:
                   ForAllValues:StringEquals:
                     route53:ResourceRecordSet: '*.rules.{{resolve:ssm:/account_subdomain/domain}}'
-                  ForAllValues:StringEquals:
                     route53:ResourceRecordSetType: CNAME
 
   USEast1StackSetAdministrationRole:
