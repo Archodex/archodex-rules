@@ -208,6 +208,19 @@ Resources:
     Properties:
       ResponseHeadersPolicyConfig:
         Name: !Ref AWS::StackName
+        CorsConfig:
+          AccessControlAllowCredentials: false
+          AccessControlAllowHeaders:
+            Items:
+              - Content-Type
+          AccessControlAllowMethods:
+            Items:
+              - GET
+              - HEAD
+          AccessControlAllowOrigins:
+            Items:
+              - '*'
+          OriginOverride: true
         CustomHeadersConfig:
           Items:
             - Header: X-Robots-Tag
@@ -233,6 +246,19 @@ Resources:
     Properties:
       ResponseHeadersPolicyConfig:
         Name: !Sub ${AWS::StackName}-cache
+        CorsConfig:
+          AccessControlAllowCredentials: false
+          AccessControlAllowHeaders:
+            Items:
+              - Content-Type
+          AccessControlAllowMethods:
+            Items:
+              - GET
+              - HEAD
+          AccessControlAllowOrigins:
+            Items:
+              - '*'
+          OriginOverride: true
         CustomHeadersConfig:
           Items:
             - Header: Cache-Control
