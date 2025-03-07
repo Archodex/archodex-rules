@@ -1,0 +1,102 @@
+Name: HashiCorp Vault
+Version: 1
+Description: >-
+  This rule captures all requests to HashiCorp Vault's KV secrets engine. It
+  captures the secret mount path, the secret path, and the secret's mount type.
+  The rule also captures the secret access event.
+
+Inputs:
+  VaultAddr:
+    Description: The address of the HashiCorp Vault server
+    Required: true
+
+Rules:
+  - Hostnames:
+      - Prefixes:
+          - vault.
+        Suffix: .servicearch.com
+    TransportRules:
+      - Http:
+          Request:
+            Methods:
+              - GET
+              - POST
+              - DELETE
+            Routes:
+              - /v1/:secret_mount_path/data/:path+
+              - /v1/:secret_mount_path/metadata/:path+
+              - /v1/:secret_mount_path/:path+
+            IgnoreRoutes:
+              - /v1/auth/*
+              - /v1/sys/*
+          Response:
+            Body:
+              MountType:
+                Path: $.mount_type
+                Value: kv
+          ResourceCaptures:
+            - Type: HashiCorp Vault Service
+              Id: "{tls_server_name}"
+              Contains:
+                - Type: Secrets Engine Mount
+                  Id: "{request.path.secret_mount_path}"
+                  Contains:
+                    - Type: Secret
+                      Id: "{request.path.path}"
+          EventCaptures:
+            - Events:
+                - Types:
+                    - "{request.method | http_method_to_action}"
+                  Resources:
+                    - - Type: HashiCorp Vault Service
+                        Id: "{tls_server_name}"
+                      - Type: Secrets Engine Mount
+                        Id: "{request.path.secret_mount_path}"
+                      - Type: Secret
+                        Id: "{request.path.path}"
+
+Rules:
+  - Hostnames:
+      - "{Inputs.VaultAddr}"
+    TransportRules:
+      SecretRoutes:
+        Http:
+          Request:
+            Methods:
+              - GET
+              - POST
+              - DELETE
+            Routes:
+              - /v1/:SecretMountPath/data/:Path+
+              - /v1/:SecretMountPath/metadata/:Path+
+              - /v1/:SecretMountPath/:Path+
+            IgnoreRoutes:
+              - /v1/auth/*
+              - /v1/sys/*
+          Response:
+            Body:
+              MountType:
+                Path: $.mount_type
+                Value: kv
+          ResourceCaptures:
+            VaultService:
+              Type: HashiCorp Vault Service
+              Id: "{TLSServerName}"
+              Contains:
+                - Type: Secrets Engine Mount
+                  Id: "{Request.Path.SecretMountPath}"
+                  Contains:
+                    - Type: Secret
+                      Id: "{Request.Path.Path}"
+          EventCaptures:
+            SecretAccess:
+              Events:
+                - Types:
+                    - "{Request.Method}"
+                  Resources:
+                    - - Type: HashiCorp Vault Service
+                        Id: "{TLSServerName}"
+                      - Type: Secrets Engine Mount
+                        Id: "{Request.Path.SecretMountPath}"
+                      - Type: Secret
+                        Id: "{Request.Path.Path}"

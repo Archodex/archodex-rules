@@ -31,3 +31,14 @@ jobs:
             --template-file template.yaml \
             --capabilities CAPABILITY_NAMED_IAM \
             --disable-rollback
+
+      - name: Generate rules.json
+        run: |-
+          ls rules/*.yaml | \
+            sed 's|rules/||; s|\.yaml$||' | \
+            jq -R -s '{ rules: (split("\n") | map(select(length>0))) }' > rules/rules.json
+
+      - name: Sync rules to S3
+        run: |-
+          aws s3 sync --exclude '*' --include '*.yaml' --delete --content-type application/yaml --content-disposition inline rules/ s3://archodex-rules-assets-${{ secrets.AWS_ACCOUNT_ID }}/dev/
+          aws s3 sync --exclude '*' --include '*.json' --delete --content-type application/json --content-disposition inline rules/ s3://archodex-rules-assets-${{ secrets.AWS_ACCOUNT_ID }}/dev/
