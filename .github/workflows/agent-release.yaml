@@ -27,7 +27,7 @@ jobs:
       - name: Generate versions.json
         run: |
           git fetch --tags
-          git tag --list 'agent-v*' | sort -V | jq -R -s --indent 2 'split("\n") | map(select(length>0)) | {versions: .}' > versions.json
+          git tag --list 'agent-v*' | sort -rV | jq -R -s --indent 2 'split("\n") | map(select(length>0)) | {versions: .}' > versions.json
 
       - name: Generate rules.json
         run: |-
