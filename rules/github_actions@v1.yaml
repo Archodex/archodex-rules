@@ -1,5 +1,6 @@
 Name: GitHub Actions
 Version: 1
+Default: true
 Description: >-
   This ruleset captures context information when the Archodex Agent is run from
   within a GitHub Actions Workflow.
