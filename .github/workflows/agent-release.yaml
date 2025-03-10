@@ -1,0 +1,42 @@
+name: Publish Rules on Agent Release
+
+on:
+  push:
+    tags:
+      - agent-v*
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_PAGER: ''
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-west-2
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ArchodexRulesGithubActionsRole
+          mask-aws-account-id: true
+
+      - uses: actions/checkout@v4
+
+      - name: Generate versions.json
+        run: |
+          git fetch --tags
+          git tag --list 'agent-v*' | sort -V | jq -R -s --indent 2 'split("\n") | map(select(length>0)) | {versions: .}' > versions.json
+
+      - name: Generate rules.json
+        run: |-
+          ls rules/*.yaml | \
+            sed 's|rules/||; s|\.yaml$||' | \
+            jq -R -s '{ rules: (split("\n") | map(select(length>0))) }' > rules/rules.json
+
+      - name: Sync rules to S3
+        run: |-
+          aws s3 sync --exclude '*' --include '*.yaml' --delete --content-type application/yaml --content-disposition inline rules/ s3://archodex-rules-assets-${{ secrets.AWS_ACCOUNT_ID }}/${{ github.ref_name }}/
+          aws s3 sync --exclude '*' --include '*.json' --delete --content-type application/json --content-disposition inline rules/ s3://archodex-rules-assets-${{ secrets.AWS_ACCOUNT_ID }}/${{ github.ref_name }}/
+          aws s3 cp versions.json s3://archodex-rules-assets-${{ secrets.AWS_ACCOUNT_ID }}/
