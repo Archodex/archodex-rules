@@ -14,8 +14,7 @@ Rules:
   - Hostnames:
       - "{Inputs.VaultAddr}"
     TransportRules:
-      SecretRoutes:
-        Http:
+      - Http:
           Request:
             Methods:
               - GET
@@ -34,8 +33,7 @@ Rules:
                 Path: $.mount_type
                 Value: kv
           ResourceCaptures:
-            VaultService:
-              Type: HashiCorp Vault Service
+            - Type: HashiCorp Vault Service
               Id: "{TLSServerName}"
               Contains:
                 - Type: Secrets Engine Mount
@@ -44,8 +42,7 @@ Rules:
                     - Type: Secret
                       Id: "{Request.Path.Path}"
           EventCaptures:
-            SecretAccess:
-              Events:
+            - Events:
                 - Types:
                     - "{Request.Method}"
                   Resources:
