@@ -34,7 +34,7 @@ Rules:
                 Value: kv
           ResourceCaptures:
             - Type: HashiCorp Vault Service
-              Id: "{TLSServerName}"
+              Id: "{TlsServerName}"
               Contains:
                 - Type: Secrets Engine Mount
                   Id: "{Request.Path.SecretMountPath}"
@@ -47,7 +47,7 @@ Rules:
                     - "{Request.Method}"
                   Resources:
                     - - Type: HashiCorp Vault Service
-                        Id: "{TLSServerName}"
+                        Id: "{TlsServerName}"
                       - Type: Secrets Engine Mount
                         Id: "{Request.Path.SecretMountPath}"
                       - Type: Secret
