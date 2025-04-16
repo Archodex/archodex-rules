@@ -1,5 +1,4 @@
 Name: HashiCorp Vault
-Version: 1
 Default: true
 Description: >-
   This rule captures all requests to HashiCorp Vault's KV secrets engine. It
