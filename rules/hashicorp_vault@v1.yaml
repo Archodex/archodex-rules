@@ -1,5 +1,6 @@
 Name: HashiCorp Vault
 Version: 1
+Default: true
 Description: >-
   This rule captures all requests to HashiCorp Vault's KV secrets engine. It
   captures the secret mount path, the secret path, and the secret's mount type.

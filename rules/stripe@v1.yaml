@@ -1,5 +1,6 @@
 Name: Stripe
 Version: 1
+Default: true
 Description: >-
   This rule captures API keys used when making requests to the Stripe payments
   service API. The API keys are treated as Secret Values, meaning they are
