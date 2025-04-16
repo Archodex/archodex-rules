@@ -1,0 +1,46 @@
+Name: Stripe
+Version: 1
+Description: >-
+  This rule captures API keys used when making requests to the Stripe payments
+  service API. The API keys are treated as Secret Values, meaning they are
+  cryptographically hashed into a unique identifier before being logged or
+  reported to the Archodex service.
+
+# The Stripe API accepts API keys in the Authorization header in two ways:
+# * As the username in a Basic scheme (password is ignored)
+# * As a Bearer token in a Bearer scheme
+
+Rules:
+  - Hostnames:
+      - api.stripe.com
+    TransportRules:
+      - Http:
+          Request:
+            Headers:
+              Authorization:
+                # Match either (the scheme is matched case insensitive):
+                # * Basic <base64-encoded value>
+                # * Bearer <API key>
+                Regex: ^(?i:Basic)\s+[A-Za-z0-9+/]*={0,3}$|^(?i:Bearer)\s+\S+$
+          ResourceCaptures:
+            - Type: Stripe API
+              Id: "{TlsServerName}"
+            - Type: Secret Value
+              Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Basic.Username or Value.Bearer.Token }') | secret_value_hash}"
+          EventCaptures:
+            - Events:
+                - Types:
+                    - Accessed
+                  Resources:
+                    - - Type: Stripe API
+                        Id: "{TlsServerName}"
+            - Principals:
+                - Resource:
+                    - Type: Secret Value
+                      Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Basic.Username or Value.Bearer.Token }') | secret_value_hash}"
+              Events:
+                - Types:
+                    - Authenticated
+                  Resources:
+                    - - Type: Stripe API
+                        Id: "{TlsServerName}"
