@@ -223,6 +223,9 @@ Resources:
           OriginOverride: true
         CustomHeadersConfig:
           Items:
+            - Header: Cache-Control
+              Override: true
+              Value: no-store
             - Header: X-Robots-Tag
               Override: true
               Value: none, noimageindex
