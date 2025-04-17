@@ -18,11 +18,8 @@ Rules:
           Request:
             Methods:
               - GET
-              - POST
-              - DELETE
             Routes:
               - /v1/:SecretMountPath/data/:Path+
-              - /v1/:SecretMountPath/metadata/:Path+
               - /v1/:SecretMountPath/:Path+
             IgnoreRoutes:
               - /v1/auth/*
@@ -32,6 +29,117 @@ Rules:
               MountType:
                 Path: $.mount_type
                 Value: kv
+              SecretValues:
+                Path: $.data.data..[?match(@, '.+')]
+          ResourceCaptures:
+            - Type: HashiCorp Vault Service
+              Id: "{TlsServerName}"
+              Contains:
+                - Type: Secrets Engine Mount
+                  Id: "{Request.Path.SecretMountPath}"
+                  Contains:
+                    - Type: Secret
+                      Id: "{Request.Path.Path}"
+            - Type: Secret Value
+              Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
+          EventCaptures:
+            - Events:
+                - Types:
+                    - "{Request.Method}"
+                  Resources:
+                    - - Type: HashiCorp Vault Service
+                        Id: "{TlsServerName}"
+                      - Type: Secrets Engine Mount
+                        Id: "{Request.Path.SecretMountPath}"
+                      - Type: Secret
+                        Id: "{Request.Path.Path}"
+            - Principals:
+                - Resource:
+                    - Type: HashiCorp Vault Service
+                      Id: "{TlsServerName}"    
+                    - Type: Secrets Engine Mount
+                      Id: "{Request.Path.SecretMountPath}"
+                    - Type: Secret
+                      Id: "{Request.Path.Path}"
+              Events:
+                - Types:
+                    - Has
+                  Resources:
+                    - - Type: Secret Value
+                        Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
+
+      - Http:
+          Request:
+            Methods:
+              - POST
+              - PATCH
+            Routes:
+              - /v1/:SecretMountPath/data/:Path+
+              - /v1/:SecretMountPath/:Path+
+            IgnoreRoutes:
+              - /v1/auth/*
+              - /v1/sys/*
+            Body:
+              SecretValues:
+                # This will fail to capture KV v1 engine secrets, for which
+                # values are specified at the top level. It's not possible to
+                # determine from the request or response which KV engine version
+                # the secret is for. This Ruleset prioritizes handling KV v2
+                # engine secrets.
+                Path: $.data..[?match(@, '.+')]
+          Response:
+            Body:
+              MountType:
+                Path: $.mount_type
+                Value: kv
+          ResourceCaptures:
+            - Type: HashiCorp Vault Service
+              Id: "{TlsServerName}"
+              Contains:
+                - Type: Secrets Engine Mount
+                  Id: "{Request.Path.SecretMountPath}"
+                  Contains:
+                    - Type: Secret
+                      Id: "{Request.Path.Path}"
+            - Type: Secret Value
+              Id: "{Request.BodyCaptures.SecretValues | secret_value_hash}"
+          EventCaptures:
+            - Events:
+                - Types:
+                    - "{Request.Method}"
+                  Resources:
+                    - - Type: HashiCorp Vault Service
+                        Id: "{TlsServerName}"
+                      - Type: Secrets Engine Mount
+                        Id: "{Request.Path.SecretMountPath}"
+                      - Type: Secret
+                        Id: "{Request.Path.Path}"
+            - Principals:
+                - Resource:
+                    - Type: HashiCorp Vault Service
+                      Id: "{TlsServerName}"    
+                    - Type: Secrets Engine Mount
+                      Id: "{Request.Path.SecretMountPath}"
+                    - Type: Secret
+                      Id: "{Request.Path.Path}"
+              Events:
+                - Types:
+                    - Has
+                  Resources:
+                    - - Type: Secret Value
+                        Id: "{Request.BodyCaptures.SecretValues | secret_value_hash}"
+
+      - Http:
+          Request:
+            Methods:
+              - DELETE
+            Routes:
+              - /v1/:SecretMountPath/data/:Path+
+              - /v1/:SecretMountPath/metadata/:Path+
+              - /v1/:SecretMountPath/:Path+
+            IgnoreRoutes:
+              - /v1/auth/*
+              - /v1/sys/*
           ResourceCaptures:
             - Type: HashiCorp Vault Service
               Id: "{TlsServerName}"
