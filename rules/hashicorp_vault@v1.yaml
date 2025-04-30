@@ -53,6 +53,12 @@ Rules:
                         Id: "{Request.Path.SecretMountPath}"
                       - Type: Secret
                         Id: "{Request.Path.Path}"
+            - Events:
+                - Types:
+                    - Fetched
+                  Resources:
+                    - - Type: Secret Value
+                        Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
             - Principals:
                 - Resource:
                     - Type: HashiCorp Vault Service
@@ -114,6 +120,12 @@ Rules:
                         Id: "{Request.Path.SecretMountPath}"
                       - Type: Secret
                         Id: "{Request.Path.Path}"
+            - Events:
+                - Types:
+                    - Stored
+                  Resources:
+                    - - Type: Secret Value
+                        Id: "{Request.BodyCaptures.SecretValues | secret_value_hash}"
             - Principals:
                 - Resource:
                     - Type: HashiCorp Vault Service
