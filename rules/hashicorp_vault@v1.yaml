@@ -69,7 +69,7 @@ Rules:
                       Id: "{Request.Path.Path}"
               Events:
                 - Types:
-                    - Has
+                    - Had
                   Resources:
                     - - Type: Secret Value
                         Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
@@ -136,7 +136,7 @@ Rules:
                       Id: "{Request.Path.Path}"
               Events:
                 - Types:
-                    - Has
+                    - Had
                   Resources:
                     - - Type: Secret Value
                         Id: "{Request.BodyCaptures.SecretValues | secret_value_hash}"
