@@ -29,14 +29,14 @@ Contexts:
             Id: "{Agent.Env.GITHUB_SERVER_URL}"
           - Type: Actor
             Id: "{Agent.Env.GITHUB_TRIGGERING_ACTOR}"
-        Event: Assumed
-      - Resource:
+      - Event: Assumed
+        Resource:
           - Type: GitHub Service
             Id: "{Agent.Env.GITHUB_SERVER_URL}"
           - Type: Actor
             Id: "{Agent.Env.GITHUB_ACTOR}"
-        Event: Invoked
-      - Resource:
+      - Event: Invoked
+        Resource:
           - Type: GitHub Service
             Id: "{Agent.Env.GITHUB_SERVER_URL}"
           - Type: Organization

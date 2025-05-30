@@ -28,19 +28,14 @@ Rules:
             - Type: Secret Value
               Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Basic.Username or Value.Bearer.Token }') | secret_value_hash}"
           EventCaptures:
-            - Events:
-                - Types:
-                    - Accessed
-                  Resources:
-                    - - Type: Stripe API
-                        Id: "{TlsServerName}"
             - Principals:
-                - Resource:
+                - Event: Used
+                  Resource:
                     - Type: Secret Value
                       Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Basic.Username or Value.Bearer.Token }') | secret_value_hash}"
               Events:
                 - Types:
-                    - Authenticated
+                    - Accessed
                   Resources:
                     - - Type: Stripe API
                         Id: "{TlsServerName}"

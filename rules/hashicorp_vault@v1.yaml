@@ -43,24 +43,9 @@ Rules:
             - Type: Secret Value
               Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
           EventCaptures:
-            - Events:
-                - Types:
-                    - "{Request.Method}"
-                  Resources:
-                    - - Type: HashiCorp Vault Service
-                        Id: "{TlsServerName}"
-                      - Type: Secrets Engine Mount
-                        Id: "{Request.Path.SecretMountPath}"
-                      - Type: Secret
-                        Id: "{Request.Path.Path}"
-            - Events:
-                - Types:
-                    - Fetched
-                  Resources:
-                    - - Type: Secret Value
-                        Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
             - Principals:
-                - Resource:
+                - Event: Read
+                  Resource:
                     - Type: HashiCorp Vault Service
                       Id: "{TlsServerName}"    
                     - Type: Secrets Engine Mount
@@ -69,7 +54,7 @@ Rules:
                       Id: "{Request.Path.Path}"
               Events:
                 - Types:
-                    - Had
+                    - Held
                   Resources:
                     - - Type: Secret Value
                         Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
@@ -110,24 +95,9 @@ Rules:
             - Type: Secret Value
               Id: "{Request.BodyCaptures.SecretValues | secret_value_hash}"
           EventCaptures:
-            - Events:
-                - Types:
-                    - "{Request.Method}"
-                  Resources:
-                    - - Type: HashiCorp Vault Service
-                        Id: "{TlsServerName}"
-                      - Type: Secrets Engine Mount
-                        Id: "{Request.Path.SecretMountPath}"
-                      - Type: Secret
-                        Id: "{Request.Path.Path}"
-            - Events:
-                - Types:
-                    - Stored
-                  Resources:
-                    - - Type: Secret Value
-                        Id: "{Request.BodyCaptures.SecretValues | secret_value_hash}"
             - Principals:
-                - Resource:
+                - Event: Updated
+                  Resource:
                     - Type: HashiCorp Vault Service
                       Id: "{TlsServerName}"    
                     - Type: Secrets Engine Mount
@@ -136,10 +106,10 @@ Rules:
                       Id: "{Request.Path.Path}"
               Events:
                 - Types:
-                    - Had
+                    - Held
                   Resources:
                     - - Type: Secret Value
-                        Id: "{Request.BodyCaptures.SecretValues | secret_value_hash}"
+                        Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
 
       - Http:
           Request:
@@ -164,7 +134,7 @@ Rules:
           EventCaptures:
             - Events:
                 - Types:
-                    - "{Request.Method}"
+                    - Deleted
                   Resources:
                     - - Type: HashiCorp Vault Service
                         Id: "{TlsServerName}"
