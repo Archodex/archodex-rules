@@ -1,0 +1,34 @@
+Name: SendGrid
+Default: true
+Description: >-
+  This rule captures API keys used when making requests to the SendGrid email
+  service API. The API keys are treated as Secret Values, meaning they are
+  cryptographically hashed into a unique identifier before being logged or
+  reported to the Archodex service.
+
+Rules:
+  - Hostnames:
+      - api.sendgrid.com
+    TransportRules:
+      - Http:
+          Request:
+            Headers:
+              Authorization:
+                Regex: ^(?i:Bearer)\s+\S+$
+          ResourceCaptures:
+            - Type: SendGrid API
+              Id: "{TlsServerName}"
+            - Type: Secret Value
+              Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Bearer.Token }') | secret_value_hash}"
+          EventCaptures:
+            - Principals:
+                - Event: Used
+                  Resource:
+                    - Type: Secret Value
+                      Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Bearer.Token }') | secret_value_hash}"
+              Events:
+                - Types:
+                    - Accessed
+                  Resources:
+                    - - Type: SendGrid API
+                        Id: "{TlsServerName}"
