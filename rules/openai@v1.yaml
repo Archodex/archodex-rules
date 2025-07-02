@@ -1,0 +1,52 @@
+Name: OpenAI
+Default: true
+Description: >-
+  This rule watches OpenAI LLM response requests. It captures the API key and
+  the model used in the request.
+
+Rules:
+  - Hostnames:
+      - api.openai.com
+    TransportRules:
+      - Http:
+          Request:
+            Methods:
+              - POST
+            Headers:
+              Authorization:
+                Regex: ^(?i:Bearer)\s+\S+$
+            Routes: /v1/responses
+            Body:
+              Model:
+                Path: $.model
+          Response:
+            Headers:
+              openai-organization:
+                Regex: .+
+          ResourceCaptures:
+            - Type: OpenAI API
+              Id: "{TlsServerName}"
+              Contains:
+                - Type: Organization
+                  Id: "{Response.Headers['openai-organization']}"
+                  Contains:
+                    - Type: Model
+                      Id: "{Request.BodyCaptures.Model}"
+            - Type: Secret Value
+              Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Bearer.Token }') | secret_value_hash}"
+          EventCaptures:
+            - Principals:
+                - Event: Used
+                  Resource:
+                    - Type: Secret Value
+                      Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Bearer.Token }') | secret_value_hash}"
+              Events:
+                - Types:
+                    - Accessed
+                  Resources:
+                    - - Type: OpenAI API
+                        Id: "{TlsServerName}"
+                      - Type: Organization
+                        Id: "{Response.Headers['openai-organization']}"
+                      - Type: Model
+                        Id: "{Request.BodyCaptures.Model}"
