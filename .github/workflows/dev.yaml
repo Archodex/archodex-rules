@@ -1,15 +1,20 @@
-name: Publish Rules on Agent Release
+name: Publish Dev Rules
 
 on:
   push:
-    tags:
-      - agent-v*
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
 
 env:
   AWS_PAGER: ''
 
 jobs:
-  deploy:
+  publish:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -27,11 +32,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Generate versions.json
-        run: |
-          git fetch --tags
-          git tag --list 'agent-v*' | sort -rV | jq -R -s --indent 2 'split("\n") | map(select(length>0)) | {versions: .}' > versions.json
-
       - name: Generate rules.json
         run: |-
           ls rules/*.yaml | \
@@ -42,6 +42,5 @@ jobs:
         run: |-
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-          aws s3 sync --exclude '*' --include '*.yaml' --delete --content-type application/yaml --content-disposition inline rules/ s3://archodex-rules-assets-${ACCOUNT_ID}/${{ github.ref_name }}/
-          aws s3 sync --exclude '*' --include '*.json' --delete --content-type application/json --content-disposition inline rules/ s3://archodex-rules-assets-${ACCOUNT_ID}/${{ github.ref_name }}/
-          aws s3 cp versions.json s3://archodex-rules-assets-${ACCOUNT_ID}/
+          aws s3 sync --exclude '*' --include '*.yaml' --delete --content-type application/yaml --content-disposition inline rules/ s3://archodex-rules-assets-${ACCOUNT_ID}/dev/
+          aws s3 sync --exclude '*' --include '*.json' --delete --content-type application/json --content-disposition inline rules/ s3://archodex-rules-assets-${ACCOUNT_ID}/dev/
