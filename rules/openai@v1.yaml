@@ -1,8 +1,7 @@
 Name: OpenAI
 Default: true
 Description: >-
-  This rule watches OpenAI LLM response requests. It captures the API key and
-  the model used in the request.
+  This rule watches OpenAI LLM response requests. It captures the API key and the model used in the request.
 
 Rules:
   - Hostnames:
@@ -25,28 +24,32 @@ Rules:
                 Regex: .+
           ResourceCaptures:
             - Type: OpenAI API
-              Id: "{TlsServerName}"
+              Id: '{TlsServerName}'
               Contains:
                 - Type: Organization
                   Id: "{Response.Headers['openai-organization']}"
                   Contains:
                     - Type: Model
-                      Id: "{Request.BodyCaptures.Model}"
+                      Id: '{Request.BodyCaptures.Model}'
             - Type: Secret Value
-              Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Bearer.Token }') | secret_value_hash}"
+              Id:
+                "{Request.Headers.authorization | parse_http_auth | render('{ Value.Bearer.Token }') |
+                secret_value_hash}"
           EventCaptures:
             - Principals:
                 - Event: Used
                   Resource:
                     - Type: Secret Value
-                      Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Bearer.Token }') | secret_value_hash}"
+                      Id:
+                        "{Request.Headers.authorization | parse_http_auth | render('{ Value.Bearer.Token }') |
+                        secret_value_hash}"
               Events:
                 - Types:
                     - Accessed
                   Resources:
                     - - Type: OpenAI API
-                        Id: "{TlsServerName}"
+                        Id: '{TlsServerName}'
                       - Type: Organization
                         Id: "{Response.Headers['openai-organization']}"
                       - Type: Model
-                        Id: "{Request.BodyCaptures.Model}"
+                        Id: '{Request.BodyCaptures.Model}'

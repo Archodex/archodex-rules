@@ -1,9 +1,8 @@
 Name: HashiCorp Vault
 Default: true
 Description: >-
-  This rule captures all requests to HashiCorp Vault's KV secrets engine. It
-  captures the secret mount path, the secret path, and the secret's mount type.
-  The rule also captures the secret access event.
+  This rule captures all requests to HashiCorp Vault's KV secrets engine. It captures the secret mount path, the secret
+  path, and the secret's mount type. The rule also captures the secret access event.
 
 Inputs:
   VaultAddr:
@@ -12,7 +11,7 @@ Inputs:
 
 Rules:
   - Hostnames:
-      - "{Inputs.VaultAddr}"
+      - '{Inputs.VaultAddr}'
     TransportRules:
       - Http:
           Request:
@@ -33,31 +32,31 @@ Rules:
                 Path: $.data.data..[?match(@, '.+')]
           ResourceCaptures:
             - Type: HashiCorp Vault Service
-              Id: "{TlsServerName}"
+              Id: '{TlsServerName}'
               Contains:
                 - Type: Secrets Engine Mount
-                  Id: "{Request.Path.SecretMountPath}"
+                  Id: '{Request.Path.SecretMountPath}'
                   Contains:
                     - Type: Secret
-                      Id: "{Request.Path.Path}"
+                      Id: '{Request.Path.Path}'
             - Type: Secret Value
-              Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
+              Id: '{Response.BodyCaptures.SecretValues | secret_value_hash}'
           EventCaptures:
             - Principals:
                 - Event: Read
                   Resource:
                     - Type: HashiCorp Vault Service
-                      Id: "{TlsServerName}"    
+                      Id: '{TlsServerName}'
                     - Type: Secrets Engine Mount
-                      Id: "{Request.Path.SecretMountPath}"
+                      Id: '{Request.Path.SecretMountPath}'
                     - Type: Secret
-                      Id: "{Request.Path.Path}"
+                      Id: '{Request.Path.Path}'
               Events:
                 - Types:
                     - Held
                   Resources:
                     - - Type: Secret Value
-                        Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
+                        Id: '{Response.BodyCaptures.SecretValues | secret_value_hash}'
 
       - Http:
           Request:
@@ -85,31 +84,31 @@ Rules:
                 Value: kv
           ResourceCaptures:
             - Type: HashiCorp Vault Service
-              Id: "{TlsServerName}"
+              Id: '{TlsServerName}'
               Contains:
                 - Type: Secrets Engine Mount
-                  Id: "{Request.Path.SecretMountPath}"
+                  Id: '{Request.Path.SecretMountPath}'
                   Contains:
                     - Type: Secret
-                      Id: "{Request.Path.Path}"
+                      Id: '{Request.Path.Path}'
             - Type: Secret Value
-              Id: "{Request.BodyCaptures.SecretValues | secret_value_hash}"
+              Id: '{Request.BodyCaptures.SecretValues | secret_value_hash}'
           EventCaptures:
             - Principals:
                 - Event: Updated
                   Resource:
                     - Type: HashiCorp Vault Service
-                      Id: "{TlsServerName}"    
+                      Id: '{TlsServerName}'
                     - Type: Secrets Engine Mount
-                      Id: "{Request.Path.SecretMountPath}"
+                      Id: '{Request.Path.SecretMountPath}'
                     - Type: Secret
-                      Id: "{Request.Path.Path}"
+                      Id: '{Request.Path.Path}'
               Events:
                 - Types:
                     - Held
                   Resources:
                     - - Type: Secret Value
-                        Id: "{Response.BodyCaptures.SecretValues | secret_value_hash}"
+                        Id: '{Response.BodyCaptures.SecretValues | secret_value_hash}'
 
       - Http:
           Request:
@@ -124,21 +123,21 @@ Rules:
               - /v1/sys/*
           ResourceCaptures:
             - Type: HashiCorp Vault Service
-              Id: "{TlsServerName}"
+              Id: '{TlsServerName}'
               Contains:
                 - Type: Secrets Engine Mount
-                  Id: "{Request.Path.SecretMountPath}"
+                  Id: '{Request.Path.SecretMountPath}'
                   Contains:
                     - Type: Secret
-                      Id: "{Request.Path.Path}"
+                      Id: '{Request.Path.Path}'
           EventCaptures:
             - Events:
                 - Types:
                     - Deleted
                   Resources:
                     - - Type: HashiCorp Vault Service
-                        Id: "{TlsServerName}"
+                        Id: '{TlsServerName}'
                       - Type: Secrets Engine Mount
-                        Id: "{Request.Path.SecretMountPath}"
+                        Id: '{Request.Path.SecretMountPath}'
                       - Type: Secret
-                        Id: "{Request.Path.Path}"
+                        Id: '{Request.Path.Path}'

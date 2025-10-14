@@ -1,10 +1,9 @@
 Name: Stripe
 Default: true
 Description: >-
-  This rule captures API keys used when making requests to the Stripe payments
-  service API. The API keys are treated as Secret Values, meaning they are
-  cryptographically hashed into a unique identifier before being logged or
-  reported to the Archodex service.
+  This rule captures API keys used when making requests to the Stripe payments service API. The API keys are treated as
+  Secret Values, meaning they are cryptographically hashed into a unique identifier before being logged or reported to
+  the Archodex service.
 
 # The Stripe API accepts API keys in the Authorization header in two ways:
 # * As the username in a Basic scheme (password is ignored)
@@ -24,18 +23,22 @@ Rules:
                 Regex: ^(?i:Basic)\s+[A-Za-z0-9+/]*={0,3}$|^(?i:Bearer)\s+\S+$
           ResourceCaptures:
             - Type: Stripe API
-              Id: "{TlsServerName}"
+              Id: '{TlsServerName}'
             - Type: Secret Value
-              Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Basic.Username or Value.Bearer.Token }') | secret_value_hash}"
+              Id:
+                "{Request.Headers.authorization | parse_http_auth | render('{ Value.Basic.Username or Value.Bearer.Token
+                }') | secret_value_hash}"
           EventCaptures:
             - Principals:
                 - Event: Used
                   Resource:
                     - Type: Secret Value
-                      Id: "{Request.Headers.authorization | parse_http_auth | render('{ Value.Basic.Username or Value.Bearer.Token }') | secret_value_hash}"
+                      Id:
+                        "{Request.Headers.authorization | parse_http_auth | render('{ Value.Basic.Username or
+                        Value.Bearer.Token }') | secret_value_hash}"
               Events:
                 - Types:
                     - Accessed
                   Resources:
                     - - Type: Stripe API
-                        Id: "{TlsServerName}"
+                        Id: '{TlsServerName}'
