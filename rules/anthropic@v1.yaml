@@ -1,0 +1,111 @@
+Name: Claude Code
+Default: true
+Mode: ai
+Description: >-
+  Monitors Claude Code and Anthropic API traffic. Captures API keys (hashed), model selection, and usage metrics
+  including input/output token counts.
+
+Rules:
+  - Hostnames:
+      - api.anthropic.com
+    TransportRules:
+      - Http:
+          Request:
+            Methods:
+              - POST
+            Routes: /v1/messages
+            Headers:
+              X-Api-Key:
+                Regex: ^sk-ant-\S+$
+            Body:
+              Model:
+                Path: $.model
+              Prompt:
+                Path: $.messages
+              System:
+                Path: $.system
+                Required: false
+              # Detect if caching is enabled in the request (optional - not all requests use caching)
+              CacheControl:
+                Path: $..cache_control.type
+                Required: false
+          Response:
+            Headers:
+              # Rate limit headers
+              anthropic-ratelimit-input-tokens-limit:
+                Regex: .+
+              anthropic-ratelimit-input-tokens-remaining:
+                Regex: .+
+              anthropic-ratelimit-output-tokens-limit:
+                Regex: .+
+              anthropic-ratelimit-output-tokens-remaining:
+                Regex: .+
+              anthropic-ratelimit-requests-limit:
+                Regex: .+
+              anthropic-ratelimit-requests-remaining:
+                Regex: .+
+              # Request tracking
+              request-id:
+                Regex: .+
+              # Organization info
+              anthropic-organization-id:
+                Regex: .+
+            Body:
+              Model:
+                Path: $.message.model
+              AssistantResponse:
+                Path: $.delta.text
+              InputTokens:
+                Path: $.usage.input_tokens
+              OutputTokens:
+                Path: $.usage.output_tokens
+              # Cache metrics (optional - only present when caching is used)
+              CacheCreationInputTokens:
+                Path: $.usage.cache_creation_input_tokens
+                Required: false
+              CacheReadInputTokens:
+                Path: $.usage.cache_read_input_tokens
+                Required: false
+          ResourceCaptures:
+            - Type: Anthropic API
+              Id: '{TlsServerName}'
+              Contains:
+                - Type: Model
+                  Id: '{Request.BodyCaptures.Model}'
+            - Type: Secret Value
+              Id: "{Request.Headers['x-api-key'] | secret_value_hash}"
+          EventCaptures:
+            - Principals:
+                - Event: Used
+                  Resource:
+                    - Type: Secret Value
+                      Id: "{Request.Headers['x-api-key'] | secret_value_hash}"
+              Events:
+                - Types:
+                    - Accessed
+                  Resources:
+                    - - Type: Anthropic API
+                        Id: '{TlsServerName}'
+                      - Type: Model
+                        Id: '{Request.BodyCaptures.Model}'
+              Attributes:
+                # Standard OTel GenAI attributes (pass through as-is)
+                gen_ai.request.model: '{Request.BodyCaptures.Model}'
+                gen_ai.usage.input_tokens: '{Response.BodyCaptures.InputTokens | last}'
+                gen_ai.usage.output_tokens: '{Response.BodyCaptures.OutputTokens | last}'
+                gen_ai.response.id: "{Response.Headers['request-id']}"
+                # Archodex-observed Anthropic-specific attributes
+                archodex.anthropic.organization_id: "{Response.Headers['anthropic-organization-id']}"
+                archodex.anthropic.cache_enabled: '{Request.BodyCaptures.CacheControl | first}'
+                archodex.anthropic.cache_write_tokens: '{Response.BodyCaptures.CacheCreationInputTokens | last}'
+                archodex.anthropic.cache_read_tokens: '{Response.BodyCaptures.CacheReadInputTokens | last}'
+                # Derived attributes - literal values not from request/response data
+                gen_ai.operation.name: chat
+                gen_ai.provider.name: anthropic
+                gen_ai.capability.name: Claude Code
+              # Content as span events (per OTel GenAI spec)
+              SpanEvents:
+                gen_ai.client.inference.operation.details:
+                  gen_ai.system_instructions: '{Request.BodyCaptures.System}'
+                  gen_ai.input.messages: '{Request.BodyCaptures.Prompt | join("")}'
+                  gen_ai.output.messages: '{Response.BodyCaptures.AssistantResponse | join("")}'

@@ -1,0 +1,87 @@
+Name: OpenRouter
+Default: true
+Mode: ai
+Description: >-
+  Monitors OpenRouter API traffic. Captures API keys (hashed), model selection, and usage metrics including input/output
+  token counts.
+
+Rules:
+  - Hostnames:
+      - openrouter.ai
+      - '*.openrouter.ai'
+    TransportRules:
+      - Http:
+          Request:
+            Methods:
+              - POST
+            Routes:
+              - /api/v1/chat/completions
+              - /api/v1/completions
+            Headers:
+              Authorization:
+                Regex: ^Bearer sk-or-v1-\S+$
+            Body:
+              Model:
+                Path: $.model
+              Prompt:
+                Path: $.messages
+              # Note: OpenRouter embeds system prompt in messages array, not separate field
+          Response:
+            Body:
+              # OpenRouter uses OpenAI-compatible response format
+              ResponseId:
+                Path: $.id
+              Provider:
+                Path: $.provider
+                Required: false
+              Model:
+                Path: $.model
+                Required: false
+              AssistantResponse:
+                Path: $.choices[*].message.content
+              InputTokens:
+                Path: $.usage.prompt_tokens
+              OutputTokens:
+                Path: $.usage.completion_tokens
+              TotalTokens:
+                Path: $.usage.total_tokens
+                Required: false
+          ResourceCaptures:
+            - Type: OpenRouter API
+              Id: '{TlsServerName}'
+              Contains:
+                - Type: Model
+                  Id: '{Request.BodyCaptures.Model}'
+            - Type: Secret Value
+              Id: "{Request.Headers['authorization'] | secret_value_hash}"
+          EventCaptures:
+            - Principals:
+                - Event: Used
+                  Resource:
+                    - Type: Secret Value
+                      Id: "{Request.Headers['authorization'] | secret_value_hash}"
+              Events:
+                - Types:
+                    - Accessed
+                  Resources:
+                    - - Type: OpenRouter API
+                        Id: '{TlsServerName}'
+                      - Type: Model
+                        Id: '{Request.BodyCaptures.Model}'
+              Attributes:
+                # Standard OTel GenAI attributes
+                gen_ai.request.model: '{Request.BodyCaptures.Model}'
+                gen_ai.response.model: '{Response.BodyCaptures.Model}'
+                gen_ai.usage.input_tokens: '{Response.BodyCaptures.InputTokens | last}'
+                gen_ai.usage.output_tokens: '{Response.BodyCaptures.OutputTokens | last}'
+                gen_ai.response.id: '{Response.BodyCaptures.ResponseId}'
+                # OpenRouter-specific attributes
+                archodex.openrouter.provider: '{Response.BodyCaptures.Provider}'
+                archodex.openrouter.response_model: '{Response.BodyCaptures.Model}'
+                # Derived attributes - values not found in request/response data
+                gen_ai.operation.name: chat
+                gen_ai.provider.name: openrouter
+              SpanEvents:
+                gen_ai.client.inference.operation.details:
+                  gen_ai.input.messages: '{Request.BodyCaptures.Prompt | join("")}'
+                  gen_ai.output.messages: '{Response.BodyCaptures.AssistantResponse | join("")}'
