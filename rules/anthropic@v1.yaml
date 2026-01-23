@@ -32,24 +32,16 @@ Rules:
           Response:
             Headers:
               # Rate limit headers
-              anthropic-ratelimit-input-tokens-limit:
-                Regex: .+
-              anthropic-ratelimit-input-tokens-remaining:
-                Regex: .+
-              anthropic-ratelimit-output-tokens-limit:
-                Regex: .+
-              anthropic-ratelimit-output-tokens-remaining:
-                Regex: .+
-              anthropic-ratelimit-requests-limit:
-                Regex: .+
-              anthropic-ratelimit-requests-remaining:
-                Regex: .+
+              anthropic-ratelimit-input-tokens-limit: {}
+              anthropic-ratelimit-input-tokens-remaining: {}
+              anthropic-ratelimit-output-tokens-limit: {}
+              anthropic-ratelimit-output-tokens-remaining: {}
+              anthropic-ratelimit-requests-limit: {}
+              anthropic-ratelimit-requests-remaining: {}
               # Request tracking
-              request-id:
-                Regex: .+
+              request-id: {}
               # Organization info
-              anthropic-organization-id:
-                Regex: .+
+              anthropic-organization-id: {}
             Body:
               Model:
                 Path: $.message.model
