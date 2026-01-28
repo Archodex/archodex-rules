@@ -72,8 +72,12 @@ Rules:
                 # Standard OTel GenAI attributes
                 gen_ai.request.model: '{Request.BodyCaptures.Model}'
                 gen_ai.response.model: '{Response.BodyCaptures.Model}'
-                gen_ai.usage.input_tokens: '{Response.BodyCaptures.InputTokens | last}'
-                gen_ai.usage.output_tokens: '{Response.BodyCaptures.OutputTokens | last}'
+                gen_ai.usage.input_tokens:
+                  Value: '{Response.BodyCaptures.InputTokens | last}'
+                  Type: Number
+                gen_ai.usage.output_tokens:
+                  Value: '{Response.BodyCaptures.OutputTokens | last}'
+                  Type: Number
                 gen_ai.response.id: '{Response.BodyCaptures.ResponseId}'
                 # OpenRouter-specific attributes
                 archodex.openrouter.provider: '{Response.BodyCaptures.Provider}'

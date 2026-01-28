@@ -32,24 +32,16 @@ Rules:
           Response:
             Headers:
               # Rate limit headers
-              anthropic-ratelimit-input-tokens-limit:
-                Regex: .+
-              anthropic-ratelimit-input-tokens-remaining:
-                Regex: .+
-              anthropic-ratelimit-output-tokens-limit:
-                Regex: .+
-              anthropic-ratelimit-output-tokens-remaining:
-                Regex: .+
-              anthropic-ratelimit-requests-limit:
-                Regex: .+
-              anthropic-ratelimit-requests-remaining:
-                Regex: .+
+              anthropic-ratelimit-input-tokens-limit: {}
+              anthropic-ratelimit-input-tokens-remaining: {}
+              anthropic-ratelimit-output-tokens-limit: {}
+              anthropic-ratelimit-output-tokens-remaining: {}
+              anthropic-ratelimit-requests-limit: {}
+              anthropic-ratelimit-requests-remaining: {}
               # Request tracking
-              request-id:
-                Regex: .+
+              request-id: {}
               # Organization info
-              anthropic-organization-id:
-                Regex: .+
+              anthropic-organization-id: {}
             Body:
               Model:
                 Path: $.message.model
@@ -91,14 +83,22 @@ Rules:
               Attributes:
                 # Standard OTel GenAI attributes (pass through as-is)
                 gen_ai.request.model: '{Request.BodyCaptures.Model}'
-                gen_ai.usage.input_tokens: '{Response.BodyCaptures.InputTokens | last}'
-                gen_ai.usage.output_tokens: '{Response.BodyCaptures.OutputTokens | last}'
+                gen_ai.usage.input_tokens:
+                  Value: '{Response.BodyCaptures.InputTokens | last}'
+                  Type: Number
+                gen_ai.usage.output_tokens:
+                  Value: '{Response.BodyCaptures.OutputTokens | last}'
+                  Type: Number
                 gen_ai.response.id: "{Response.Headers['request-id']}"
                 # Archodex-observed Anthropic-specific attributes
                 archodex.anthropic.organization_id: "{Response.Headers['anthropic-organization-id']}"
                 archodex.anthropic.cache_enabled: '{Request.BodyCaptures.CacheControl | first}'
-                archodex.anthropic.cache_write_tokens: '{Response.BodyCaptures.CacheCreationInputTokens | last}'
-                archodex.anthropic.cache_read_tokens: '{Response.BodyCaptures.CacheReadInputTokens | last}'
+                archodex.anthropic.cache_write_tokens:
+                  Value: '{Response.BodyCaptures.CacheCreationInputTokens | last}'
+                  Type: Number
+                archodex.anthropic.cache_read_tokens:
+                  Value: '{Response.BodyCaptures.CacheReadInputTokens | last}'
+                  Type: Number
                 # Derived attributes - literal values not from request/response data
                 gen_ai.operation.name: chat
                 gen_ai.provider.name: anthropic
