@@ -9,6 +9,8 @@ Rules:
   - Hostnames:
       - openrouter.ai
       - '*.openrouter.ai'
+      # Microservices Demo Local OpenRouter
+      - mock-openrouter
     TransportRules:
       - Http:
           Request:
