@@ -1,9 +1,9 @@
-Name: Claude Code
+Name: Anthropic API
 Default: true
 Mode: ai
 Description: >-
-  Monitors Claude Code and Anthropic API traffic. Captures API keys (hashed), model selection, and usage metrics
-  including input/output token counts.
+  Monitors Anthropic API traffic. Captures API keys (hashed), model selection, and usage metrics including input/output
+  token counts.
 
 Rules:
   - Hostnames:
@@ -43,15 +43,20 @@ Rules:
               # Organization info
               anthropic-organization-id: {}
             Body:
+              # Model: $.model for JSON, $.message.model for SSE message_start
               Model:
-                Path: $.message.model
+                Path: $.model
+                StreamingPath: $.message.model
+              # AssistantResponse: $.content[*].text for JSON, $.delta.text for SSE content_block_delta
               AssistantResponse:
-                Path: $.delta.text
+                Path: $.content[*].text
+                StreamingPath: $.delta.text
+              # Usage fields work the same for both JSON and SSE message_delta
               InputTokens:
                 Path: $.usage.input_tokens
               OutputTokens:
                 Path: $.usage.output_tokens
-              # Cache metrics (optional - only present when caching is used)
+              # Cache metrics
               CacheCreationInputTokens:
                 Path: $.usage.cache_creation_input_tokens
                 Required: false
@@ -63,7 +68,7 @@ Rules:
               Id: '{TlsServerName}'
               Contains:
                 - Type: Model
-                  Id: '{Request.BodyCaptures.Model}'
+                  Id: '{Request.BodyCaptures.Model | first}'
             - Type: Secret Value
               Id: "{Request.Headers['x-api-key'] | secret_value_hash}"
           EventCaptures:
@@ -79,19 +84,19 @@ Rules:
                     - - Type: Anthropic API
                         Id: '{TlsServerName}'
                       - Type: Model
-                        Id: '{Request.BodyCaptures.Model}'
+                        Id: '{Request.BodyCaptures.Model | first}'
               Attributes:
-                # Standard OTel GenAI attributes (pass through as-is)
-                gen_ai.request.model: '{Request.BodyCaptures.Model}'
+                # Standard OTel GenAI attributes
+                gen_ai.request.model: '{Request.BodyCaptures.Model | first}'
                 gen_ai.usage.input_tokens:
                   Value: '{Response.BodyCaptures.InputTokens | last}'
                   Type: Number
                 gen_ai.usage.output_tokens:
                   Value: '{Response.BodyCaptures.OutputTokens | last}'
                   Type: Number
-                gen_ai.response.id: "{Response.Headers['request-id']}"
-                # Archodex-observed Anthropic-specific attributes
-                archodex.anthropic.organization_id: "{Response.Headers['anthropic-organization-id']}"
+                gen_ai.response.id: "{Response.Headers['request-id'] | first}"
+                # Anthropic-specific attributes
+                archodex.anthropic.organization_id: "{Response.Headers['anthropic-organization-id'] | first}"
                 archodex.anthropic.cache_enabled: '{Request.BodyCaptures.CacheControl | first}'
                 archodex.anthropic.cache_write_tokens:
                   Value: '{Response.BodyCaptures.CacheCreationInputTokens | last}'
@@ -99,10 +104,10 @@ Rules:
                 archodex.anthropic.cache_read_tokens:
                   Value: '{Response.BodyCaptures.CacheReadInputTokens | last}'
                   Type: Number
-                # Derived attributes - literal values not from request/response data
+                # Derived attributes
                 gen_ai.operation.name: chat
                 gen_ai.provider.name: anthropic
-                gen_ai.capability.name: Claude Code
+                gen_ai.capability.name: Anthropic Claude
               # Content as span events (per OTel GenAI spec)
               SpanEvents:
                 gen_ai.client.inference.operation.details:
