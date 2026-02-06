@@ -1,0 +1,134 @@
+Name: Claude Code
+Default: true
+Mode: ai
+Description: >-
+  Monitors Claude Code CLI traffic to Anthropic API. Captures OAuth tokens (hashed), model selection, session metadata,
+  and usage metrics including input/output token counts.
+
+Rules:
+  - Hostnames:
+      - api.anthropic.com
+    TransportRules:
+      - Http:
+          Request:
+            Methods:
+              - POST
+            Routes: /v1/messages
+            Headers:
+              # Claude Code uses OAuth Bearer tokens
+              Authorization:
+                Regex: ^Bearer sk-ant-oat\S+$
+            Body:
+              Model:
+                Path: $.model
+              Prompt:
+                Path: $.messages
+              System:
+                Path: $.system
+                Required: false
+              # Claude Code sends user metadata with session info
+              UserMetadata:
+                Path: $.metadata.user_id
+                Required: false
+              # Detect if caching is enabled in the request
+              CacheControl:
+                Path: $..cache_control.type
+                Required: false
+          Response:
+            Headers:
+              # Claude Code unified rate limits
+              anthropic-ratelimit-unified-status: {}
+              anthropic-ratelimit-unified-5h-status: {}
+              anthropic-ratelimit-unified-5h-utilization: {}
+              anthropic-ratelimit-unified-7d-status: {}
+              anthropic-ratelimit-unified-7d-utilization: {}
+              # Request tracking
+              request-id: {}
+              # Organization info
+              anthropic-organization-id: {}
+            Body:
+              # Model: $.model for JSON, $.message.model for SSE message_start
+              Model:
+                Path: $.model
+                StreamingPath: $.message.model
+              # AssistantResponse: $.content[*].text for JSON, $.delta.text for SSE content_block_delta
+              AssistantResponse:
+                Path: $.content[*].text
+                StreamingPath: $.delta.text
+              # Usage fields work the same for both JSON and SSE message_delta
+              InputTokens:
+                Path: $.usage.input_tokens
+              OutputTokens:
+                Path: $.usage.output_tokens
+              # Cache metrics
+              CacheCreationInputTokens:
+                Path: $.usage.cache_creation_input_tokens
+                Required: false
+              CacheReadInputTokens:
+                Path: $.usage.cache_read_input_tokens
+                Required: false
+          ResourceCaptures:
+            - Type: Anthropic API
+              Id: '{TlsServerName}'
+              Contains:
+                - Type: Model
+                  Id: '{Request.BodyCaptures.Model | first}'
+            - Type: Secret Value
+              Id: "{Request.Headers['authorization'] | strip_prefix('Bearer ') | secret_value_hash}"
+          EventCaptures:
+            - TraceContext:
+                TraceIdSeed: "{Request.BodyCaptures.UserMetadata | first | regex_capture('_session_([a-f0-9-]+)$', 1)}"
+              Principals:
+                - Event: Used
+                  Resource:
+                    - Type: Secret Value
+                      Id: "{Request.Headers['authorization'] | strip_prefix('Bearer ') | secret_value_hash}"
+              Events:
+                - Types:
+                    - Accessed
+                  Resources:
+                    - - Type: Anthropic API
+                        Id: '{TlsServerName}'
+                      - Type: Model
+                        Id: '{Request.BodyCaptures.Model | first}'
+              Attributes:
+                # Standard OTel GenAI attributes
+                gen_ai.request.model: '{Request.BodyCaptures.Model | first}'
+                gen_ai.usage.input_tokens:
+                  Value: '{Response.BodyCaptures.InputTokens | last}'
+                  Type: Number
+                gen_ai.usage.output_tokens:
+                  Value: '{Response.BodyCaptures.OutputTokens | last}'
+                  Type: Number
+                gen_ai.response.id: "{Response.Headers['request-id'] | first}"
+                # Claude Code specific attributes (parsed from metadata.user_id)
+                gen_ai.conversation.id:
+                  "{Request.BodyCaptures.UserMetadata | first | regex_capture('_session_([a-f0-9-]+)$', 1)}"
+                user.hash:
+                  "{Request.BodyCaptures.UserMetadata | first | regex_capture('^user_([a-f0-9]+)_account_', 1)}"
+                user.id:
+                  "{Request.BodyCaptures.UserMetadata | first | regex_capture('_account_([a-f0-9-]+)_session_', 1)}"
+                # Anthropic-specific attributes
+                archodex.anthropic.organization_id: "{Response.Headers['anthropic-organization-id'] | first}"
+                archodex.anthropic.cache_enabled: '{Request.BodyCaptures.CacheControl | first}'
+                archodex.anthropic.cache_write_tokens:
+                  Value: '{Response.BodyCaptures.CacheCreationInputTokens | last}'
+                  Type: Number
+                archodex.anthropic.cache_read_tokens:
+                  Value: '{Response.BodyCaptures.CacheReadInputTokens | last}'
+                  Type: Number
+                # Unified rate limit utilization
+                archodex.anthropic.ratelimit_5h_utilization:
+                  "{Response.Headers['anthropic-ratelimit-unified-5h-utilization'] | first}"
+                archodex.anthropic.ratelimit_7d_utilization:
+                  "{Response.Headers['anthropic-ratelimit-unified-7d-utilization'] | first}"
+                # Derived attributes
+                gen_ai.operation.name: chat
+                gen_ai.provider.name: anthropic
+                gen_ai.capability.name: Claude Code
+              # Content as span events (per OTel GenAI spec)
+              SpanEvents:
+                gen_ai.client.inference.operation.details:
+                  gen_ai.system_instructions: '{Request.BodyCaptures.System}'
+                  gen_ai.input.messages: '{Request.BodyCaptures.Prompt | join("")}'
+                  gen_ai.output.messages: '{Response.BodyCaptures.AssistantResponse | join("")}'
