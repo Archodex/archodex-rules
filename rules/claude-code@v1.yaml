@@ -1,9 +1,9 @@
-Name: Anthropic API
+Name: Claude Code
 Default: true
 Mode: ai
 Description: >-
-  Monitors Anthropic API traffic. Captures API keys (hashed), model selection, and usage metrics including input/output
-  token counts.
+  Monitors Claude Code CLI traffic to Anthropic API. Captures OAuth tokens (hashed), model selection, session metadata,
+  and usage metrics including input/output token counts.
 
 Rules:
   - Hostnames:
@@ -15,8 +15,9 @@ Rules:
               - POST
             Routes: /v1/messages
             Headers:
-              X-Api-Key:
-                Regex: ^sk-ant-\S+$
+              # Claude Code uses OAuth Bearer tokens
+              Authorization:
+                Regex: ^Bearer sk-ant-oat\S+$
             Body:
               Model:
                 Path: $.model
@@ -25,19 +26,22 @@ Rules:
               System:
                 Path: $.system
                 Required: false
-              # Detect if caching is enabled in the request (optional - not all requests use caching)
+              # Claude Code sends user metadata with session info
+              UserMetadata:
+                Path: $.metadata.user_id
+                Required: false
+              # Detect if caching is enabled in the request
               CacheControl:
                 Path: $..cache_control.type
                 Required: false
           Response:
             Headers:
-              # Rate limit headers
-              anthropic-ratelimit-input-tokens-limit: {}
-              anthropic-ratelimit-input-tokens-remaining: {}
-              anthropic-ratelimit-output-tokens-limit: {}
-              anthropic-ratelimit-output-tokens-remaining: {}
-              anthropic-ratelimit-requests-limit: {}
-              anthropic-ratelimit-requests-remaining: {}
+              # Claude Code unified rate limits
+              anthropic-ratelimit-unified-status: {}
+              anthropic-ratelimit-unified-5h-status: {}
+              anthropic-ratelimit-unified-5h-utilization: {}
+              anthropic-ratelimit-unified-7d-status: {}
+              anthropic-ratelimit-unified-7d-utilization: {}
               # Request tracking
               request-id: {}
               # Organization info
@@ -70,13 +74,15 @@ Rules:
                 - Type: Model
                   Id: '{Request.BodyCaptures.Model | first}'
             - Type: Secret Value
-              Id: "{Request.Headers['x-api-key'] | secret_value_hash}"
+              Id: "{Request.Headers['authorization'] | strip_prefix('Bearer ') | secret_value_hash}"
           EventCaptures:
-            - Principals:
+            - TraceContext:
+                TraceIdSeed: "{Request.BodyCaptures.UserMetadata | first | regex_capture('_session_([a-f0-9-]+)$', 1)}"
+              Principals:
                 - Event: Used
                   Resource:
                     - Type: Secret Value
-                      Id: "{Request.Headers['x-api-key'] | secret_value_hash}"
+                      Id: "{Request.Headers['authorization'] | strip_prefix('Bearer ') | secret_value_hash}"
               Events:
                 - Types:
                     - Accessed
@@ -95,6 +101,13 @@ Rules:
                   Value: '{Response.BodyCaptures.OutputTokens | last}'
                   Type: Number
                 gen_ai.response.id: "{Response.Headers['request-id'] | first}"
+                # Claude Code specific attributes (parsed from metadata.user_id)
+                gen_ai.conversation.id:
+                  "{Request.BodyCaptures.UserMetadata | first | regex_capture('_session_([a-f0-9-]+)$', 1)}"
+                user.hash:
+                  "{Request.BodyCaptures.UserMetadata | first | regex_capture('^user_([a-f0-9]+)_account_', 1)}"
+                user.id:
+                  "{Request.BodyCaptures.UserMetadata | first | regex_capture('_account_([a-f0-9-]+)_session_', 1)}"
                 # Anthropic-specific attributes
                 archodex.anthropic.organization_id: "{Response.Headers['anthropic-organization-id'] | first}"
                 archodex.anthropic.cache_enabled: '{Request.BodyCaptures.CacheControl | first}'
@@ -104,10 +117,15 @@ Rules:
                 archodex.anthropic.cache_read_tokens:
                   Value: '{Response.BodyCaptures.CacheReadInputTokens | last}'
                   Type: Number
+                # Unified rate limit utilization
+                archodex.anthropic.ratelimit_5h_utilization:
+                  "{Response.Headers['anthropic-ratelimit-unified-5h-utilization'] | first}"
+                archodex.anthropic.ratelimit_7d_utilization:
+                  "{Response.Headers['anthropic-ratelimit-unified-7d-utilization'] | first}"
                 # Derived attributes
                 gen_ai.operation.name: chat
                 gen_ai.provider.name: anthropic
-                gen_ai.capability.name: Anthropic Claude
+                gen_ai.capability.name: Claude Code
               # Content as span events (per OTel GenAI spec)
               SpanEvents:
                 gen_ai.client.inference.operation.details:
