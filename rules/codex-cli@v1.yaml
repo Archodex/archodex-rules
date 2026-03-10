@@ -1,0 +1,220 @@
+Name: Codex CLI
+Default: true
+Mode: ai
+Description: >-
+  Monitors OpenAI Codex CLI traffic across inference and selected control-plane endpoints. Captures API keys (hashed),
+  model/session metadata, usage metrics, and optional non-inference endpoint traces.
+
+Rules:
+  - Hostnames:
+      - api.openai.com
+      - chatgpt.com
+      - ab.chatgpt.com
+    TransportRules:
+      - Http:
+          Request:
+            Methods:
+              - POST
+            Routes:
+              - /v1/responses
+              - /backend-api/codex/responses
+            Headers:
+              Authorization:
+                Regex: ^Bearer \S+$
+            Body:
+              Model:
+                Path: $.model
+              Prompt:
+                Path: $.input
+              System:
+                Path: $.instructions
+                Required: false
+          Response:
+            Mode: auto
+            Headers:
+              # Request tracking
+              x-oai-request-id: {}
+              # Codex rate limit headers
+              x-codex-primary-used-percent: {}
+              x-codex-primary-window-minutes: {}
+              x-codex-primary-reset-at: {}
+              x-codex-secondary-used-percent: {}
+              x-codex-secondary-window-minutes: {}
+              x-codex-secondary-reset-at: {}
+              # Codex credits
+              x-codex-credits-has-credits: {}
+              x-codex-credits-balance: {}
+              x-codex-credits-unlimited: {}
+            Discrete:
+              Body:
+                ResponseId:
+                  Path: $.id
+                  Required: false
+                Model:
+                  Path: $.model
+                  Required: false
+                AssistantResponse:
+                  Path: $.output
+                  Required: false
+                InputTokens:
+                  Path: $.usage.input_tokens
+                  Required: false
+                OutputTokens:
+                  Path: $.usage.output_tokens
+                  Required: false
+                # Reasoning tokens (Codex models often use reasoning)
+                ReasoningTokens:
+                  Path: $.usage.output_tokens_details.reasoning_tokens
+                  Required: false
+                # Cached input tokens
+                CachedInputTokens:
+                  Path: $.usage.input_tokens_details.cached_tokens
+                  Required: false
+            Streaming:
+              Anchors:
+                - Name: response_completed
+                  Match:
+                    EventType: response.completed
+                  Captures:
+                    ResponseId: $.response.id
+                    Model: $.response.model
+                    InputTokens: $.response.usage.input_tokens
+                    OutputTokens: $.response.usage.output_tokens
+                    ReasoningTokens: $.response.usage.output_tokens_details.reasoning_tokens
+                    CachedInputTokens: $.response.usage.input_tokens_details.cached_tokens
+                    AssistantResponse: $.response.output
+                    ReasoningEffort: $.response.reasoning.effort
+                    TextVerbosity: $.response.text.verbosity
+              CarryForward:
+                Window: since_previous_anchor
+                Sources:
+                  - Name: web_search_call
+                    Match:
+                      EventType: response.output_item.done
+                      Where:
+                        - Path: $.item.type
+                          Equals: web_search_call
+                    EmitAsSpanEvent:
+                      Name: archodex.stream.web_search_call
+                      Attributes:
+                        item_id: $.item.id
+                        action_type: $.item.action.type
+                        action_query: $.item.action.query
+                        action_queries: $.item.action.queries
+                        action_url: $.item.action.url
+                  - Name: function_call
+                    Match:
+                      EventType: response.output_item.done
+                      Where:
+                        - Path: $.item.type
+                          Equals: function_call
+                    EmitAsSpanEvent:
+                      Name: archodex.stream.function_call
+                      Attributes:
+                        item_id: $.item.id
+                        call_id: $.item.call_id
+                        name: $.item.name
+                        arguments: $.item.arguments
+                  - Name: reasoning
+                    Match:
+                      EventType: response.output_item.done
+                      Where:
+                        - Path: $.item.type
+                          Equals: reasoning
+                        # skip reasoning items with no summary text
+                        - Path: $.item.summary[0].type
+                          Equals: summary_text
+                    EmitAsSpanEvent:
+                      Name: archodex.stream.reasoning
+                      Attributes:
+                        item_id: $.item.id
+                        summary: $.item.summary[0].text
+                  - Name: message
+                    Match:
+                      EventType: response.output_item.done
+                      Where:
+                        - Path: $.item.type
+                          Equals: message
+                    EmitAsSpanEvent:
+                      Name: archodex.stream.message
+                      Attributes:
+                        item_id: $.item.id
+                        phase: $.item.phase
+                        text: $.item.content[0].text
+              Emit:
+                CarryForwardAsSpanEvents: true
+                TimelineAsSpanEvents: false
+              Limits:
+                MaxEvents: 5000
+                MaxCarryForwardPerAnchor: null
+                MaxCarryForwardEventBytes: null
+                OverflowPolicy: discard
+          ResourceCaptures:
+            - Type: OpenAI API
+              Id: '{TlsServerName}'
+              Contains:
+                - Type: Model
+                  Id: '{Request.BodyCaptures.Model | first}'
+            - Type: Secret Value
+              Id: "{Request.Headers['authorization'] | strip_prefix('Bearer ') | secret_value_hash}"
+          EventCaptures:
+            - TraceContext:
+                TraceIdSeed: "{Request.Headers['session_id'] | first}"
+              Principals:
+                - Event: Used
+                  Resource:
+                    - Type: Secret Value
+                      Id: "{Request.Headers['authorization'] | strip_prefix('Bearer ') | secret_value_hash}"
+              Events:
+                - Types:
+                    - Accessed
+                  Resources:
+                    - - Type: OpenAI API
+                        Id: '{TlsServerName}'
+                      - Type: Model
+                        Id: '{Request.BodyCaptures.Model | first}'
+              Attributes:
+                # Standard OTel GenAI attributes
+                gen_ai.request.model: '{Request.BodyCaptures.Model | first}'
+                gen_ai.usage.input_tokens:
+                  Value: '{Response.BodyCaptures.InputTokens | last}'
+                  Type: Number
+                gen_ai.usage.output_tokens:
+                  Value: '{Response.BodyCaptures.OutputTokens | last}'
+                  Type: Number
+                gen_ai.response.id: '{Response.BodyCaptures.ResponseId | last}'
+                gen_ai.conversation.id: "{Request.Headers['session_id'] | first}"
+                # Codex-specific attributes
+                archodex.openai.request_id: "{Response.Headers['x-oai-request-id'] | first}"
+                archodex.codex.session_id: "{Request.Headers['session_id'] | first}"
+                archodex.codex.reasoning_tokens:
+                  Value: '{Response.BodyCaptures.ReasoningTokens | last}'
+                  Type: Number
+                archodex.codex.cached_input_tokens:
+                  Value: '{Response.BodyCaptures.CachedInputTokens | last}'
+                  Type: Number
+                archodex.codex.reasoning_effort: '{Response.BodyCaptures.ReasoningEffort | last}'
+                archodex.codex.text_verbosity: '{Response.BodyCaptures.TextVerbosity | last}'
+                archodex.codex.model_cap: "{Response.Headers['x-codex-model-cap-model'] | first}"
+                archodex.codex.active_limit: "{Response.Headers['x-codex-active-limit'] | first}"
+                archodex.codex.plan_type: "{Response.Headers['x-codex-plan-type'] | first}"
+                # Codex rate limit utilization
+                archodex.codex.ratelimit_primary_used_percent:
+                  "{Response.Headers['x-codex-primary-used-percent'] | first}"
+                archodex.codex.ratelimit_secondary_used_percent:
+                  "{Response.Headers['x-codex-secondary-used-percent'] | first}"
+                # Credits
+                archodex.codex.credits_balance: "{Response.Headers['x-codex-credits-balance'] | first}"
+                archodex.codex.credits_available: "{Response.Headers['x-codex-credits-has-credits'] | first}"
+                archodex.codex.agent_type: "{Request.Headers['x-openai-subagent'] | first}"
+                archodex.codex.workspace_context: "{Request.Headers['x-codex-turn-metadata'] | first}"
+                # Derived attributes
+                gen_ai.operation.name: chat
+                gen_ai.provider.name: openai
+                gen_ai.capability.name: Codex CLI
+              # Content as span events (per OTel GenAI spec)
+              SpanEvents:
+                gen_ai.client.inference.operation.details:
+                  gen_ai.system_instructions: '{Request.BodyCaptures.System}'
+                  gen_ai.input.messages: '{Request.BodyCaptures.Prompt | tojson}'
+                  gen_ai.output.messages: '{Response.BodyCaptures.AssistantResponse | last}'
