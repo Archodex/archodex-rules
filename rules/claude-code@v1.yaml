@@ -3,7 +3,7 @@ Default: true
 Mode: ai
 Description: >-
   Monitors Claude Code CLI traffic to Anthropic API. Captures OAuth tokens (hashed), model selection, session metadata,
-  and usage metrics including input/output token counts.
+  usage metrics, tool calls, and streaming events.
 
 Rules:
   - Hostnames:
@@ -35,44 +35,139 @@ Rules:
                 Path: $..cache_control.type
                 Required: false
           Response:
+            Mode: auto
             Headers:
-              # Claude Code unified rate limits
+              # Unified rate limit budget (utilization + headroom)
               anthropic-ratelimit-unified-status: {}
               anthropic-ratelimit-unified-5h-status: {}
               anthropic-ratelimit-unified-5h-utilization: {}
               anthropic-ratelimit-unified-7d-status: {}
               anthropic-ratelimit-unified-7d-utilization: {}
+              anthropic-ratelimit-unified-reset: {}
+              anthropic-ratelimit-unified-overage-status: {}
               # Request tracking
               request-id: {}
               # Organization info
               anthropic-organization-id: {}
-            Body:
-              # Model: $.model for JSON, $.message.model for SSE message_start
-              Model:
-                Path: $.model
-                StreamingPath: $.message.model
-              # AssistantResponse: $.content[*].text for JSON, $.delta.text for SSE content_block_delta
-              AssistantResponse:
-                Path: $.content[*].text
-                StreamingPath: $.delta.text
-              # Usage fields work the same for both JSON and SSE message_delta
-              InputTokens:
-                Path: $.usage.input_tokens
-              OutputTokens:
-                Path: $.usage.output_tokens
-              # Cache metrics
-              CacheCreationInputTokens:
-                Path: $.usage.cache_creation_input_tokens
-                Required: false
-              CacheReadInputTokens:
-                Path: $.usage.cache_read_input_tokens
-                Required: false
+            Discrete:
+              Body:
+                ResponseId:
+                  Path: $.id
+                  Required: false
+                Model:
+                  Path: $.model
+                  Required: false
+            Streaming:
+              Anchors:
+                # message_delta fires just before message_stop and carries all final token counts.
+                # Model and cache creation breakdown arrive via MergeIntoCaptures from message_start.
+                - Name: message_delta
+                  Match:
+                    EventType: message_delta
+                  Captures:
+                    InputTokens: $.usage.input_tokens
+                    OutputTokens: $.usage.output_tokens
+                    CacheReadTokens: $.usage.cache_read_input_tokens
+                    CacheWriteTokens: $.usage.cache_creation_input_tokens
+                    StopReason: $.delta.stop_reason
+              CarryForward:
+                Window: since_previous_anchor
+                Sources:
+                  # message_start fires first; merge model and per-tier cache creation into captures.
+                  - Name: message_start
+                    Match:
+                      EventType: message_start
+                    MergeIntoCaptures:
+                      Model: $.message.model
+                      CacheCreate5m: $.message.usage.cache_creation.ephemeral_5m_input_tokens
+                      CacheCreate1h: $.message.usage.cache_creation.ephemeral_1h_input_tokens
+
+              # Per-block accumulation: emits one span event per content block at stop time.
+              # Each tool_use block gets its own archodex.stream.tool_use span event with the complete tool_input JSON
+              # each thinking block gets archodex.stream.thinking with the full thinking text.
+              Blocks:
+                # Tool calls made by the model (Read, Edit, Bash, Write, Glob, etc.)
+                - StartMatch:
+                    EventType: content_block_start
+                    Where:
+                      - Path: $.content_block.type
+                        Equals: tool_use
+                  DeltaEventType: content_block_delta
+                  StopEventType: content_block_stop
+                  BlockIndexPath: $.index
+                  DeltaPath: $.delta.partial_json
+                  EmitAtStop:
+                    Name: archodex.stream.tool_use
+                    ContentAttribute: tool_input
+                    Attributes:
+                      tool_id: $.content_block.id
+                      tool_name: $.content_block.name
+
+                # Server-side tools (web_search, etc.)
+                - StartMatch:
+                    EventType: content_block_start
+                    Where:
+                      - Path: $.content_block.type
+                        Equals: server_tool_use
+                  DeltaEventType: content_block_delta
+                  StopEventType: content_block_stop
+                  BlockIndexPath: $.index
+                  DeltaPath: $.delta.partial_json
+                  EmitAtStop:
+                    Name: archodex.stream.server_tool_use
+                    ContentAttribute: tool_input
+                    Attributes:
+                      tool_id: $.content_block.id
+                      tool_name: $.content_block.name
+
+                # Extended thinking blocks
+                - StartMatch:
+                    EventType: content_block_start
+                    Where:
+                      - Path: $.content_block.type
+                        Equals: thinking
+                  DeltaEventType: content_block_delta
+                  StopEventType: content_block_stop
+                  BlockIndexPath: $.index
+                  DeltaPath: $.delta.thinking
+                  EmitAtStop:
+                    Name: archodex.stream.thinking
+                    ContentAttribute: thinking_content
+                    Attributes: {}
+
+                # Text output
+                # Accumulate block text into `Response.BodyCaptures` using the key defined in `EmitAtStop.BodyCaptureKey`
+                # WARNING: BodyCaptureKey and Anchors.Captures share the same namespace
+                #
+                # Claude's content_block's will be aggregated into `Response.BodyCaptures.OutputText`
+                - StartMatch:
+                    EventType: content_block_start
+                    Where:
+                      - Path: $.content_block.type
+                        Equals: text
+                  DeltaEventType: content_block_delta
+                  StopEventType: content_block_stop
+                  BlockIndexPath: $.index
+                  DeltaPath: $.delta.text
+                  EmitAtStop:
+                    Name: archodex.stream.text
+                    ContentAttribute: output_text
+                    BodyCaptureKey: OutputText
+                    Attributes: {}
+              Emit:
+                CarryForwardAsSpanEvents: true
+                TimelineAsSpanEvents: false
+              Limits:
+                MaxEvents: 5000
+                MaxCarryForwardPerAnchor: null
+                MaxCarryForwardEventBytes: null
+                OverflowPolicy: discard
           ResourceCaptures:
             - Type: Anthropic API
               Id: '{TlsServerName}'
               Contains:
                 - Type: Model
-                  Id: '{Request.BodyCaptures.Model | first}'
+                  Id: '{Response.BodyCaptures.Model | last}'
             - Type: Secret Value
               Id: "{Request.Headers['authorization'] | strip_prefix('Bearer ') | secret_value_hash}"
           EventCaptures:
@@ -93,7 +188,7 @@ Rules:
                         Id: '{Request.BodyCaptures.Model | first}'
               Attributes:
                 # Standard OTel GenAI attributes
-                gen_ai.request.model: '{Request.BodyCaptures.Model | first}'
+                gen_ai.request.model: '{Response.BodyCaptures.Model | last}'
                 gen_ai.usage.input_tokens:
                   Value: '{Response.BodyCaptures.InputTokens | last}'
                   Type: Number
@@ -101,27 +196,43 @@ Rules:
                   Value: '{Response.BodyCaptures.OutputTokens | last}'
                   Type: Number
                 gen_ai.response.id: "{Response.Headers['request-id'] | first}"
-                # Claude Code specific attributes (parsed from metadata.user_id)
                 gen_ai.conversation.id:
                   "{Request.BodyCaptures.UserMetadata | first | regex_capture('_session_([a-f0-9-]+)$', 1)}"
                 user.hash:
                   "{Request.BodyCaptures.UserMetadata | first | regex_capture('^user_([a-f0-9]+)_account_', 1)}"
                 user.id:
                   "{Request.BodyCaptures.UserMetadata | first | regex_capture('_account_([a-f0-9-]+)_session_', 1)}"
+
                 # Anthropic-specific attributes
                 archodex.anthropic.organization_id: "{Response.Headers['anthropic-organization-id'] | first}"
                 archodex.anthropic.cache_enabled: '{Request.BodyCaptures.CacheControl | first}'
                 archodex.anthropic.cache_write_tokens:
-                  Value: '{Response.BodyCaptures.CacheCreationInputTokens | last}'
+                  Value: '{Response.BodyCaptures.CacheWriteTokens | last}'
                   Type: Number
                 archodex.anthropic.cache_read_tokens:
-                  Value: '{Response.BodyCaptures.CacheReadInputTokens | last}'
+                  Value: '{Response.BodyCaptures.CacheReadTokens | last}'
                   Type: Number
-                # Unified rate limit utilization
+                archodex.anthropic.cache_creation_5m_tokens:
+                  Value: '{Response.BodyCaptures.CacheCreate5m | last}'
+                  Type: Number
+                archodex.anthropic.cache_creation_1h_tokens:
+                  Value: '{Response.BodyCaptures.CacheCreate1h | last}'
+                  Type: Number
+                archodex.anthropic.stop_reason: '{Response.BodyCaptures.StopReason | last}'
+
+                # Unified rate limit budget
+                archodex.anthropic.ratelimit_unified_status:
+                  "{Response.Headers['anthropic-ratelimit-unified-status'] | first}"
+                archodex.anthropic.ratelimit_5h_status:
+                  "{Response.Headers['anthropic-ratelimit-unified-5h-status'] | first}"
                 archodex.anthropic.ratelimit_5h_utilization:
                   "{Response.Headers['anthropic-ratelimit-unified-5h-utilization'] | first}"
                 archodex.anthropic.ratelimit_7d_utilization:
                   "{Response.Headers['anthropic-ratelimit-unified-7d-utilization'] | first}"
+                archodex.anthropic.ratelimit_reset: "{Response.Headers['anthropic-ratelimit-unified-reset'] | first}"
+                archodex.anthropic.ratelimit_overage_status:
+                  "{Response.Headers['anthropic-ratelimit-unified-overage-status'] | first}"
+
                 # Derived attributes
                 gen_ai.operation.name: chat
                 gen_ai.provider.name: anthropic
@@ -130,5 +241,5 @@ Rules:
               SpanEvents:
                 gen_ai.client.inference.operation.details:
                   gen_ai.system_instructions: '{Request.BodyCaptures.System}'
-                  gen_ai.input.messages: '{Request.BodyCaptures.Prompt | join("")}'
-                  gen_ai.output.messages: '{Response.BodyCaptures.AssistantResponse | join("")}'
+                  gen_ai.input.messages: '{Request.BodyCaptures.Prompt | tojson}'
+                  gen_ai.output.messages: '{Response.BodyCaptures.OutputText | join("")}'
