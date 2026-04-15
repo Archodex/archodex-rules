@@ -14,6 +14,7 @@ Rules:
       - Http:
           Request:
             Methods:
+              - GET
               - POST
             Routes:
               - /v1/responses
@@ -24,13 +25,16 @@ Rules:
             Body:
               Model:
                 Path: $.model
+                Required: false
               Prompt:
                 Path: $.input
+                Required: false
               System:
                 Path: $.instructions
                 Required: false
           Response:
             Mode: auto
+            RequireHeaders: false
             Headers:
               # Request tracking
               x-oai-request-id: {}
@@ -45,6 +49,9 @@ Rules:
               x-codex-credits-has-credits: {}
               x-codex-credits-balance: {}
               x-codex-credits-unlimited: {}
+              # Model cap
+              # x-codex-model-cap-model: {}
+              # x-codex-model-cap-reset-after-seconds: {}
             Discrete:
               Body:
                 ResponseId:
@@ -82,9 +89,15 @@ Rules:
                     OutputTokens: $.response.usage.output_tokens
                     ReasoningTokens: $.response.usage.output_tokens_details.reasoning_tokens
                     CachedInputTokens: $.response.usage.input_tokens_details.cached_tokens
-                    AssistantResponse: $.response.output
+                    # Filter out encrypted reasoning items — only keep cleartext output
+                    AssistantResponse: $.response.output[?@.type != 'reasoning']
                     ReasoningEffort: $.response.reasoning.effort
                     TextVerbosity: $.response.text.verbosity
+                    ServiceTier: $.response.service_tier
+                    PreviousResponseId: $.response.previous_response_id
+                    CompletedAt: $.response.completed_at
+                    ResponseStatus: $.response.status
+                    Generate: $.response.generate
               CarryForward:
                 Window: since_previous_anchor
                 Sources:
@@ -115,20 +128,39 @@ Rules:
                         call_id: $.item.call_id
                         name: $.item.name
                         arguments: $.item.arguments
-                  - Name: reasoning
+                  - Name: function_call_output
                     Match:
-                      EventType: response.output_item.done
+                      EventType: response.create
                       Where:
-                        - Path: $.item.type
-                          Equals: reasoning
-                        # skip reasoning items with no summary text
-                        - Path: $.item.summary[0].type
-                          Equals: summary_text
+                        - Path: $.input[0].type
+                          Equals: function_call_output
                     EmitAsSpanEvent:
-                      Name: archodex.stream.reasoning
+                      Name: archodex.stream.function_call_output
                       Attributes:
-                        item_id: $.item.id
-                        summary: $.item.summary[0].text
+                        call_id: $.input[0].call_id
+                        output: $.input[0].output
+                  # Reasoning summaries arrive via response.reasoning_summary_text.done
+                  # (output_item.done also carries the same summary in item.summary[] but
+                  # with 100% overlap — using only this source avoids duplicate span events)
+                  - Name: reasoning_summary
+                    Match:
+                      EventType: response.reasoning_summary_text.done
+                    EmitAsSpanEvent:
+                      Name: archodex.stream.reasoning_summary
+                      Attributes:
+                        item_id: $.item_id
+                        summary: $.text
+                  # Extract rate limit data from codex.rate_limits SSE event
+                  # Fires once per user-message turn (not on tool-use continuations)
+                  - Name: rate_limits
+                    Match:
+                      EventType: codex.rate_limits
+                    MergeIntoCaptures:
+                      PlanType: $.plan_type
+                      PrimaryUsedPercent: $.rate_limits.primary.used_percent
+                      SecondaryUsedPercent: $.rate_limits.secondary.used_percent
+                      CreditsBalance: $.credits.balance
+                      CreditsAvailable: $.credits.has_credits
                   - Name: message
                     Match:
                       EventType: response.output_item.done
@@ -154,7 +186,7 @@ Rules:
               Id: '{TlsServerName}'
               Contains:
                 - Type: Model
-                  Id: '{Request.BodyCaptures.Model | first}'
+                  Id: "{Request.BodyCaptures.Model | first | default('unknown')}"
             - Type: Secret Value
               Id: "{Request.Headers['authorization'] | strip_prefix('Bearer ') | secret_value_hash}"
           EventCaptures:
@@ -172,10 +204,13 @@ Rules:
                     - - Type: OpenAI API
                         Id: '{TlsServerName}'
                       - Type: Model
-                        Id: '{Request.BodyCaptures.Model | first}'
+                        Id: "{Request.BodyCaptures.Model | first | default('unknown')}"
               Attributes:
                 # Standard OTel GenAI attributes
-                gen_ai.request.model: '{Request.BodyCaptures.Model | first}'
+                # Request body has model on HTTP; anchor captures it from response.completed on WS
+                gen_ai.request.model:
+                  "{Request.BodyCaptures.Model | first | default(Response.BodyCaptures.Model | last |
+                  default('unknown'))}"
                 gen_ai.usage.input_tokens:
                   Value: '{Response.BodyCaptures.InputTokens | last}'
                   Type: Number
@@ -195,17 +230,38 @@ Rules:
                   Type: Number
                 archodex.codex.reasoning_effort: '{Response.BodyCaptures.ReasoningEffort | last}'
                 archodex.codex.text_verbosity: '{Response.BodyCaptures.TextVerbosity | last}'
-                archodex.codex.model_cap: "{Response.Headers['x-codex-model-cap-model'] | first}"
-                archodex.codex.active_limit: "{Response.Headers['x-codex-active-limit'] | first}"
-                archodex.codex.plan_type: "{Response.Headers['x-codex-plan-type'] | first}"
-                # Codex rate limit utilization
+                gen_ai.response.service_tier: '{Response.BodyCaptures.ServiceTier | last}'
+                archodex.codex.previous_response_id: '{Response.BodyCaptures.PreviousResponseId | last}'
+                archodex.codex.completed_at:
+                  Value: '{Response.BodyCaptures.CompletedAt | last}'
+                  Type: Number
+                # Rate limits, plan type, credits - sourced from codex.rate_limits SSE event
+                # with HTTP header fallback (headers only populate on non-WebSocket transports)
+                archodex.codex.plan_type:
+                  "{Response.BodyCaptures.PlanType | last | default(Response.Headers['x-codex-plan-type'] | first)}"
                 archodex.codex.ratelimit_primary_used_percent:
-                  "{Response.Headers['x-codex-primary-used-percent'] | first}"
+                  Value:
+                    "{Response.BodyCaptures.PrimaryUsedPercent | last |
+                    default(Response.Headers['x-codex-primary-used-percent'] | first)}"
+                  Type: Number
                 archodex.codex.ratelimit_secondary_used_percent:
-                  "{Response.Headers['x-codex-secondary-used-percent'] | first}"
-                # Credits
-                archodex.codex.credits_balance: "{Response.Headers['x-codex-credits-balance'] | first}"
-                archodex.codex.credits_available: "{Response.Headers['x-codex-credits-has-credits'] | first}"
+                  Value:
+                    "{Response.BodyCaptures.SecondaryUsedPercent | last |
+                    default(Response.Headers['x-codex-secondary-used-percent'] | first)}"
+                  Type: Number
+                archodex.codex.credits_balance:
+                  "{Response.BodyCaptures.CreditsBalance | last | default(Response.Headers['x-codex-credits-balance'] |
+                  first)}"
+                archodex.codex.credits_available:
+                  "{Response.BodyCaptures.CreditsAvailable | last |
+                  default(Response.Headers['x-codex-credits-has-credits'] | first)}"
+                # HTTP-only headers - no SSE equivalent available
+                # archodex.codex.model_cap: "{Response.Headers['x-codex-model-cap-model'] | first}"
+                # archodex.codex.active_limit: "{Response.Headers['x-codex-active-limit'] | first}"
+                archodex.codex.response_status: '{Response.BodyCaptures.ResponseStatus | last}'
+                archodex.codex.cache_warmup:
+                  Value: '{Response.BodyCaptures.Generate | last | not}'
+                  Type: Boolean
                 archodex.codex.agent_type: "{Request.Headers['x-openai-subagent'] | first}"
                 archodex.codex.workspace_context: "{Request.Headers['x-codex-turn-metadata'] | first}"
                 # Derived attributes
