@@ -1,4 +1,5 @@
 Name: OpenAI
+Mode: ai
 Default: true
 Description: >-
   This rule watches OpenAI LLM response requests. It captures the API key and the model used in the request.
@@ -53,3 +54,8 @@ Rules:
                         Id: "{Response.Headers['openai-organization']}"
                       - Type: Model
                         Id: '{Request.BodyCaptures.Model}'
+              Attributes:
+                gen_ai.request.model: '{Request.BodyCaptures.Model}'
+                gen_ai.operation.name: chat
+                gen_ai.provider.name: openai
+                server.address: '{TlsServerName}'
