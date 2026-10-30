@@ -1,6 +1,5 @@
 Name: Claude Code
 Default: true
-Mode: ai
 Description: >-
   Monitors Claude Code CLI traffic to Anthropic API. Captures OAuth tokens (hashed), model selection, session metadata,
   usage metrics, tool calls, and streaming events.

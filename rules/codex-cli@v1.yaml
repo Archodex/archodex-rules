@@ -1,6 +1,5 @@
 Name: Codex CLI
 Default: true
-Mode: ai
 Description: >-
   Monitors OpenAI Codex CLI traffic across inference and selected control-plane endpoints. Captures API keys (hashed),
   model/session metadata, usage metrics, and optional non-inference endpoint traces.

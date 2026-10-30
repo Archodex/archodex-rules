@@ -1,6 +1,5 @@
 Name: Anthropic API
 Default: true
-Mode: ai
 Description: >-
   Monitors Anthropic API traffic. Captures API keys (hashed), model selection, and usage metrics including input/output
   token counts.
