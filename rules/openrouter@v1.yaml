@@ -1,6 +1,5 @@
 Name: OpenRouter
 Default: true
-Mode: ai
 Description: >-
   Monitors OpenRouter API traffic. Captures API keys (hashed), model selection, and usage metrics including input/output
   token counts.
